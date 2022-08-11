@@ -16,6 +16,61 @@ parameters:
   upgrade_pg_versions:
     type: string
     default: '13.4-14.0'
+
+commands:
+  test_init:
+    parameters:
+      pg_major:
+        description: 'postgres major version to use'
+        type: integer
+    steps:
+      - checkout
+      - attach_workspace:
+          at: .
+      - run:
+          name: 'Install Extension'
+          command: |
+            tar xfv "${CIRCLE_WORKING_DIRECTORY}/install-<< parameters.pg_major >>.tar" --directory /
+      - run:
+          name: 'Configure'
+          command: |
+            chown -R circleci .
+            gosu circleci ./configure --without-pg-version-check
+      - run:
+          name: 'Enable core dumps'
+          command: |
+            ulimit -c unlimited
+
+  store_regressions:
+    description: "store regression outputs"
+    steps:
+      - run:
+          name: 'Regressions'
+          command: |
+            if [ -f "src/test/regress/regression.diffs" ]; then
+              cat src/test/regress/regression.diffs
+              exit 1
+            fi
+          when: on_fail
+      - store_artifacts:
+          name: 'Save regressions'
+          path: src/test/regress/regression.diffs
+
+  store_core_dump:
+    description: "store core dump"
+    steps:
+      - run:
+          name: 'Copy coredumps'
+          command: |
+            mkdir -p /tmp/core_dumps
+            if ls core.* 1> /dev/null 2>&1; then
+                cp core.* /tmp/core_dumps
+            fi
+          when: on_fail
+      - store_artifacts:
+          name: 'Save core dumps'
+          path: /tmp/core_dumps
+
 jobs:
   build:
     description: Build the citus extension
@@ -116,23 +171,12 @@ jobs:
       - image: '<< parameters.image >>:<< parameters.image_tag >><< pipeline.parameters.image_suffix >>'
     working_directory: /home/circleci/project
     steps:
-      - checkout
-      - attach_workspace:
-          at: .
+      - test_init:
+          pg_major: << parameters.old_pg_major >>
       - run:
-          name: 'Install Extension'
+          name: 'Install Extension New Version'
           command: |
-            tar xfv "${CIRCLE_WORKING_DIRECTORY}/install-<< parameters.old_pg_major >>.tar" --directory /
             tar xfv "${CIRCLE_WORKING_DIRECTORY}/install-<< parameters.new_pg_major >>.tar" --directory /
-      - run:
-          name: 'Configure'
-          command: |
-            chown -R circleci .
-            gosu circleci ./configure --without-pg-version-check
-      - run:
-          name: 'Enable core dumps'
-          command: |
-            ulimit -c unlimited
       - run:
           name: 'Install and test postgres upgrade'
           command: |
@@ -143,22 +187,6 @@ jobs:
                 new-bindir=/usr/lib/postgresql/<< parameters.new_pg_major >>/bin
           no_output_timeout: 2m
       - run:
-          name: 'Regressions'
-          command: |
-            if [ -f "src/test/regress/regression.diffs" ]; then
-              cat src/test/regress/regression.diffs
-              exit 1
-            fi
-          when: on_fail
-      - run:
-          name: 'Copy coredumps'
-          command: |
-            mkdir -p /tmp/core_dumps
-            if ls core.* 1> /dev/null 2>&1; then
-                cp core.* /tmp/core_dumps
-            fi
-          when: on_fail
-      - run:
           name: 'Copy pg_upgrade logs for newData dir'
           command: |
             mkdir -p /tmp/pg_upgrade_newData_logs
@@ -167,14 +195,10 @@ jobs:
             fi
           when: on_fail
       - store_artifacts:
-          name: 'Save regressions'
-          path: src/test/regress/regression.diffs
-      - store_artifacts:
-          name: 'Save core dumps'
-          path: /tmp/core_dumps
-      - store_artifacts:
           name: 'Save pg_upgrade logs for newData dir'
           path: /tmp/pg_upgrade_newData_logs
+      - store_regressions
+      - store_core_dump
       - codecov/upload:
           flags: 'test_<< parameters.old_pg_major >>_<< parameters.new_pg_major >>,upgrade'
 
@@ -198,22 +222,8 @@ jobs:
     resource_class: xlarge
     working_directory: /home/circleci/project
     steps:
-      - checkout
-      - attach_workspace:
-          at: .
-      - run:
-          name: 'Install Extension'
-          command: |
-            tar xfv "${CIRCLE_WORKING_DIRECTORY}/install-<< parameters.pg_major >>.tar" --directory /
-      - run:
-          name: 'Configure'
-          command: |
-            chown -R circleci .
-            gosu circleci ./configure --without-pg-version-check
-      - run:
-          name: 'Enable core dumps'
-          command: |
-            ulimit -c unlimited
+      - test_init:
+          pg_major: << parameters.pg_major >>
       - run:
           name: 'Test arbitrary configs'
           command: |
@@ -242,20 +252,10 @@ jobs:
             mkdir src/test/regress/tmp_citus_test/logfiles
             find src/test/regress/tmp_citus_test/ -name "logfile_*" -exec cp -t src/test/regress/tmp_citus_test/logfiles/ {} +
           when: on_fail
-      - run:
-          name: 'Copy coredumps'
-          command: |
-            mkdir -p /tmp/core_dumps
-            if ls core.* 1> /dev/null 2>&1; then
-                cp core.* /tmp/core_dumps
-            fi
-          when: on_fail
-      - store_artifacts:
-          name: 'Save core dumps'
-          path: /tmp/core_dumps
       - store_artifacts:
           name: 'Save logfiles'
           path: src/test/regress/tmp_citus_test/logfiles
+      - store_core_dump
       - codecov/upload:
           flags: 'test_<< parameters.pg_major >>,upgrade'
 
@@ -315,28 +315,8 @@ jobs:
                   citus-post-tar=/home/circleci/project/install-$PG_MAJOR.tar; \
             done;
           no_output_timeout: 2m
-      - run:
-          name: 'Regressions'
-          command: |
-            if [ -f "src/test/regress/regression.diffs" ]; then
-              cat src/test/regress/regression.diffs
-              exit 1
-            fi
-          when: on_fail
-      - run:
-          name: 'Copy coredumps'
-          command: |
-            mkdir -p /tmp/core_dumps
-            if ls core.* 1> /dev/null 2>&1; then
-                cp core.* /tmp/core_dumps
-            fi
-          when: on_fail
-      - store_artifacts:
-          name: 'Save regressions'
-          path: src/test/regress/regression.diffs
-      - store_artifacts:
-          name: 'Save core dumps'
-          path: /tmp/core_dumps
+      - store_regressions
+      - store_core_dump
       - codecov/upload:
           flags: 'test_<< parameters.pg_major >>,upgrade'
 
@@ -360,55 +340,21 @@ jobs:
       - image: '<< parameters.image >>:<< parameters.image_tag >><< pipeline.parameters.image_suffix >>'
     working_directory: /home/circleci/project
     steps:
-      - checkout
-      - attach_workspace:
-          at: .
-      - run:
-          name: 'Install Extension'
-          command: |
-            tar xfv "${CIRCLE_WORKING_DIRECTORY}/install-${PG_MAJOR}.tar" --directory /
-      - run:
-          name: 'Configure'
-          command: |
-            chown -R circleci .
-            gosu circleci ./configure --without-pg-version-check
-      - run:
-          name: 'Enable core dumps'
-          command: |
-            ulimit -c unlimited
+      - test_init:
+          pg_major: << parameters.pg_major >>
       - run:
           name: 'Run Test'
           command: |
             gosu circleci make -C src/test/regress << parameters.make >>
           no_output_timeout: 2m
-      - run:
-          name: 'Regressions'
-          command: |
-            if [ -f "src/test/regress/regression.diffs" ]; then
-              cat src/test/regress/regression.diffs
-              exit 1
-            fi
-          when: on_fail
-      - run:
-          name: 'Copy coredumps'
-          command: |
-            mkdir -p /tmp/core_dumps
-            if ls core.* 1> /dev/null 2>&1; then
-                cp core.* /tmp/core_dumps
-            fi
-          when: on_fail
-      - store_artifacts:
-          name: 'Save regressions'
-          path: src/test/regress/regression.diffs
+      - store_regressions
       - store_artifacts:
           name: 'Save mitmproxy output (failure test specific)'
           path: src/test/regress/proxy.output
       - store_artifacts:
           name: 'Save results'
           path: src/test/regress/results/
-      - store_artifacts:
-          name: 'Save core dumps'
-          path: /tmp/core_dumps
+      - store_core_dump
       - codecov/upload:
           flags: 'test_<< parameters.pg_major >>,<< parameters.make >>'
           when: always
@@ -437,41 +383,17 @@ jobs:
       - image: '<< parameters.image >>:<< parameters.image_tag >><< pipeline.parameters.image_suffix >>'
     working_directory: /home/circleci/project
     steps:
-      - checkout
-      - attach_workspace:
-          at: .
-      - run:
-          name: 'Install Extension'
-          command: |
-            tar xfv "${CIRCLE_WORKING_DIRECTORY}/install-${PG_MAJOR}.tar" --directory /
-      - run:
-          name: 'Configure'
-          command: |
-            chown -R circleci .
-            gosu circleci ./configure --without-pg-version-check
-      - run:
-          name: 'Enable core dumps'
-          command: |
-            ulimit -c unlimited
+      - test_init:
+          pg_major: << parameters.pg_major >>
       - run:
           name: 'Run Test'
           command: |
             gosu circleci make -C src/test/<< parameters.suite >> << parameters.make >>
           no_output_timeout: 2m
-      - run:
-          name: 'Copy coredumps'
-          command: |
-            mkdir -p /tmp/core_dumps
-            if ls core.* 1> /dev/null 2>&1; then
-                cp core.* /tmp/core_dumps
-            fi
-          when: on_fail
       - store_artifacts:
           name: 'Save tap logs'
           path: /home/circleci/project/src/test/<< parameters.suite >>/tmp_check/log
-      - store_artifacts:
-          name: 'Save core dumps'
-          path: /tmp/core_dumps
+      - store_core_dump
       - codecov/upload:
           flags: 'test_<< parameters.pg_major >>,tap_<< parameters.suite >>_<< parameters.make >>'
           when: always
