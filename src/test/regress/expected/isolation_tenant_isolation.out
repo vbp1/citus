@@ -143,6 +143,79 @@ id|value
 (0 rows)
 
 
+starting permutation: s1-load-cache s1-insert s1-begin s1-select s2-begin s2-isolate-tenant s1-insert-pushable-nonfast s2-commit s1-commit s2-print-cluster
+create_distributed_table
+---------------------------------------------------------------------
+
+(1 row)
+
+step s1-load-cache:
+ TRUNCATE isolation_table;
+
+step s1-insert:
+ INSERT INTO isolation_table VALUES (5, 10);
+
+step s1-begin:
+    BEGIN;
+    -- the tests are written with the logic where single shard SELECTs
+    -- do not to open transaction blocks
+    SET citus.select_opens_transaction_block TO false;
+
+step s1-select:
+ SELECT count(*) FROM isolation_table WHERE id = 5;
+
+count
+---------------------------------------------------------------------
+    1
+(1 row)
+
+step s2-begin:
+ BEGIN;
+
+step s2-isolate-tenant:
+ SELECT isolate_tenant_to_new_shard('isolation_table', 5, shard_transfer_mode => 'block_writes');
+
+isolate_tenant_to_new_shard
+---------------------------------------------------------------------
+                    1500016
+(1 row)
+
+step s1-insert-pushable-nonfast:
+ INSERT INTO isolation_table SELECT * FROM isolation_table;
+ <waiting ...>
+step s2-commit: 
+ COMMIT;
+
+step s1-insert-pushable-nonfast: <... completed>
+step s1-commit:
+ COMMIT;
+
+step s2-print-cluster:
+ -- row count per shard
+ SELECT
+  nodeport, shardid, success, result
+ FROM
+  run_command_on_placements('isolation_table', 'select count(*) from %s')
+ ORDER BY
+  nodeport, shardid;
+ -- rows
+ SELECT id, value FROM isolation_table ORDER BY id, value;
+
+nodeport|shardid|success|result
+---------------------------------------------------------------------
+   57637|1500015|t      |     0
+   57637|1500016|t      |     2
+   57637|1500017|t      |     0
+   57638|1500014|t      |     0
+(4 rows)
+
+id|value
+---------------------------------------------------------------------
+ 5|   10
+ 5|   10
+(2 rows)
+
+
 starting permutation: s1-load-cache s1-begin s1-select s2-begin s2-isolate-tenant s1-insert s2-commit s1-commit s2-print-cluster
 create_distributed_table
 ---------------------------------------------------------------------
@@ -174,7 +247,7 @@ step s2-isolate-tenant:
 
 isolate_tenant_to_new_shard
 ---------------------------------------------------------------------
-                    1500016
+                    1500022
 (1 row)
 
 step s1-insert:
@@ -200,10 +273,10 @@ step s2-print-cluster:
 
 nodeport|shardid|success|result
 ---------------------------------------------------------------------
-   57637|1500015|t      |     0
-   57637|1500016|t      |     1
-   57637|1500017|t      |     0
-   57638|1500014|t      |     0
+   57637|1500021|t      |     0
+   57637|1500022|t      |     1
+   57637|1500023|t      |     0
+   57638|1500020|t      |     0
 (4 rows)
 
 id|value
@@ -243,7 +316,7 @@ step s2-isolate-tenant:
 
 isolate_tenant_to_new_shard
 ---------------------------------------------------------------------
-                    1500022
+                    1500028
 (1 row)
 
 step s1-insert-non-pushable:
@@ -269,10 +342,10 @@ step s2-print-cluster:
 
 nodeport|shardid|success|result
 ---------------------------------------------------------------------
-   57637|1500021|t      |     0
-   57637|1500022|t      |     1
-   57637|1500023|t      |     0
-   57638|1500020|t      |     0
+   57637|1500027|t      |     0
+   57637|1500028|t      |     1
+   57637|1500029|t      |     0
+   57638|1500026|t      |     0
 (4 rows)
 
 id|value
@@ -312,7 +385,7 @@ step s2-isolate-tenant:
 
 isolate_tenant_to_new_shard
 ---------------------------------------------------------------------
-                    1500028
+                    1500034
 (1 row)
 
 step s1-insert-non-pushable-returning:
@@ -343,10 +416,10 @@ step s2-print-cluster:
 
 nodeport|shardid|success|result
 ---------------------------------------------------------------------
-   57637|1500027|t      |     0
-   57637|1500028|t      |     1
-   57637|1500029|t      |     0
-   57638|1500026|t      |     0
+   57637|1500033|t      |     0
+   57637|1500034|t      |     1
+   57637|1500035|t      |     0
+   57638|1500032|t      |     0
 (4 rows)
 
 id|value
@@ -386,7 +459,7 @@ step s2-isolate-tenant:
 
 isolate_tenant_to_new_shard
 ---------------------------------------------------------------------
-                    1500034
+                    1500040
 (1 row)
 
 step s1-insert-non-pushable-conflict:
@@ -412,10 +485,10 @@ step s2-print-cluster:
 
 nodeport|shardid|success|result
 ---------------------------------------------------------------------
-   57637|1500033|t      |     0
-   57637|1500034|t      |     1
-   57637|1500035|t      |     0
-   57638|1500032|t      |     0
+   57637|1500039|t      |     0
+   57637|1500040|t      |     1
+   57637|1500041|t      |     0
+   57638|1500038|t      |     0
 (4 rows)
 
 id|value
@@ -455,7 +528,7 @@ step s2-isolate-tenant:
 
 isolate_tenant_to_new_shard
 ---------------------------------------------------------------------
-                    1500040
+                    1500046
 (1 row)
 
 step s1-copy:
@@ -481,10 +554,10 @@ step s2-print-cluster:
 
 nodeport|shardid|success|result
 ---------------------------------------------------------------------
-   57637|1500039|t      |     1
-   57637|1500040|t      |     1
-   57637|1500041|t      |     2
-   57638|1500038|t      |     1
+   57637|1500045|t      |     1
+   57637|1500046|t      |     1
+   57637|1500047|t      |     2
+   57638|1500044|t      |     1
 (4 rows)
 
 id|value
@@ -528,7 +601,7 @@ step s2-isolate-tenant:
 
 isolate_tenant_to_new_shard
 ---------------------------------------------------------------------
-                    1500046
+                    1500052
 (1 row)
 
 step s1-ddl:
@@ -554,10 +627,10 @@ step s2-print-cluster:
 
 nodeport|shardid|success|result
 ---------------------------------------------------------------------
-   57637|1500045|t      |     0
-   57637|1500046|t      |     0
-   57637|1500047|t      |     0
-   57638|1500044|t      |     0
+   57637|1500051|t      |     0
+   57637|1500052|t      |     0
+   57637|1500053|t      |     0
+   57638|1500050|t      |     0
 (4 rows)
 
 id|value
@@ -612,7 +685,7 @@ step s2-isolate-tenant:
 
 isolate_tenant_to_new_shard
 ---------------------------------------------------------------------
-                    1500052
+                    1500058
 (1 row)
 
 step s1-update:
@@ -638,10 +711,10 @@ step s2-print-cluster:
 
 nodeport|shardid|success|result
 ---------------------------------------------------------------------
-   57637|1500051|t      |     0
-   57637|1500052|t      |     1
-   57637|1500053|t      |     0
-   57638|1500050|t      |     0
+   57637|1500057|t      |     0
+   57637|1500058|t      |     1
+   57637|1500059|t      |     0
+   57638|1500056|t      |     0
 (4 rows)
 
 id|value
@@ -681,7 +754,7 @@ step s2-isolate-tenant:
 
 isolate_tenant_to_new_shard
 ---------------------------------------------------------------------
-                    1500058
+                    1500064
 (1 row)
 
 step s1-delete:
@@ -707,15 +780,85 @@ step s2-print-cluster:
 
 nodeport|shardid|success|result
 ---------------------------------------------------------------------
-   57637|1500057|t      |     0
-   57637|1500058|t      |     0
-   57637|1500059|t      |     0
-   57638|1500056|t      |     0
+   57637|1500063|t      |     0
+   57637|1500064|t      |     0
+   57637|1500065|t      |     0
+   57638|1500062|t      |     0
 (4 rows)
 
 id|value
 ---------------------------------------------------------------------
 (0 rows)
+
+
+starting permutation: s1-insert s1-begin s1-select s2-begin s2-isolate-tenant s1-insert-pushable-nonfast s2-commit s1-commit s2-print-cluster
+create_distributed_table
+---------------------------------------------------------------------
+
+(1 row)
+
+step s1-insert:
+ INSERT INTO isolation_table VALUES (5, 10);
+
+step s1-begin:
+    BEGIN;
+    -- the tests are written with the logic where single shard SELECTs
+    -- do not to open transaction blocks
+    SET citus.select_opens_transaction_block TO false;
+
+step s1-select:
+ SELECT count(*) FROM isolation_table WHERE id = 5;
+
+count
+---------------------------------------------------------------------
+    1
+(1 row)
+
+step s2-begin:
+ BEGIN;
+
+step s2-isolate-tenant:
+ SELECT isolate_tenant_to_new_shard('isolation_table', 5, shard_transfer_mode => 'block_writes');
+
+isolate_tenant_to_new_shard
+---------------------------------------------------------------------
+                    1500070
+(1 row)
+
+step s1-insert-pushable-nonfast:
+ INSERT INTO isolation_table SELECT * FROM isolation_table;
+ <waiting ...>
+step s2-commit: 
+ COMMIT;
+
+step s1-insert-pushable-nonfast: <... completed>
+step s1-commit:
+ COMMIT;
+
+step s2-print-cluster:
+ -- row count per shard
+ SELECT
+  nodeport, shardid, success, result
+ FROM
+  run_command_on_placements('isolation_table', 'select count(*) from %s')
+ ORDER BY
+  nodeport, shardid;
+ -- rows
+ SELECT id, value FROM isolation_table ORDER BY id, value;
+
+nodeport|shardid|success|result
+---------------------------------------------------------------------
+   57637|1500069|t      |     0
+   57637|1500070|t      |     2
+   57637|1500071|t      |     0
+   57638|1500068|t      |     0
+(4 rows)
+
+id|value
+---------------------------------------------------------------------
+ 5|   10
+ 5|   10
+(2 rows)
 
 
 starting permutation: s1-begin s1-select s2-begin s2-isolate-tenant s1-insert s2-commit s1-commit s2-print-cluster
@@ -746,7 +889,7 @@ step s2-isolate-tenant:
 
 isolate_tenant_to_new_shard
 ---------------------------------------------------------------------
-                    1500064
+                    1500076
 (1 row)
 
 step s1-insert:
@@ -772,10 +915,10 @@ step s2-print-cluster:
 
 nodeport|shardid|success|result
 ---------------------------------------------------------------------
-   57637|1500063|t      |     0
-   57637|1500064|t      |     1
-   57637|1500065|t      |     0
-   57638|1500062|t      |     0
+   57637|1500075|t      |     0
+   57637|1500076|t      |     1
+   57637|1500077|t      |     0
+   57638|1500074|t      |     0
 (4 rows)
 
 id|value
@@ -812,7 +955,7 @@ step s2-isolate-tenant:
 
 isolate_tenant_to_new_shard
 ---------------------------------------------------------------------
-                    1500070
+                    1500082
 (1 row)
 
 step s1-insert-non-pushable:
@@ -838,10 +981,10 @@ step s2-print-cluster:
 
 nodeport|shardid|success|result
 ---------------------------------------------------------------------
-   57637|1500069|t      |     0
-   57637|1500070|t      |     1
-   57637|1500071|t      |     0
-   57638|1500068|t      |     0
+   57637|1500081|t      |     0
+   57637|1500082|t      |     1
+   57637|1500083|t      |     0
+   57638|1500080|t      |     0
 (4 rows)
 
 id|value
@@ -878,7 +1021,7 @@ step s2-isolate-tenant:
 
 isolate_tenant_to_new_shard
 ---------------------------------------------------------------------
-                    1500076
+                    1500088
 (1 row)
 
 step s1-insert-non-pushable-returning:
@@ -909,10 +1052,10 @@ step s2-print-cluster:
 
 nodeport|shardid|success|result
 ---------------------------------------------------------------------
-   57637|1500075|t      |     0
-   57637|1500076|t      |     1
-   57637|1500077|t      |     0
-   57638|1500074|t      |     0
+   57637|1500087|t      |     0
+   57637|1500088|t      |     1
+   57637|1500089|t      |     0
+   57638|1500086|t      |     0
 (4 rows)
 
 id|value
@@ -949,7 +1092,7 @@ step s2-isolate-tenant:
 
 isolate_tenant_to_new_shard
 ---------------------------------------------------------------------
-                    1500082
+                    1500094
 (1 row)
 
 step s1-insert-non-pushable-conflict:
@@ -975,10 +1118,10 @@ step s2-print-cluster:
 
 nodeport|shardid|success|result
 ---------------------------------------------------------------------
-   57637|1500081|t      |     0
-   57637|1500082|t      |     1
-   57637|1500083|t      |     0
-   57638|1500080|t      |     0
+   57637|1500093|t      |     0
+   57637|1500094|t      |     1
+   57637|1500095|t      |     0
+   57638|1500092|t      |     0
 (4 rows)
 
 id|value
@@ -1015,7 +1158,7 @@ step s2-isolate-tenant:
 
 isolate_tenant_to_new_shard
 ---------------------------------------------------------------------
-                    1500088
+                    1500100
 (1 row)
 
 step s1-copy:
@@ -1041,10 +1184,10 @@ step s2-print-cluster:
 
 nodeport|shardid|success|result
 ---------------------------------------------------------------------
-   57637|1500087|t      |     1
-   57637|1500088|t      |     1
-   57637|1500089|t      |     2
-   57638|1500086|t      |     1
+   57637|1500099|t      |     1
+   57637|1500100|t      |     1
+   57637|1500101|t      |     2
+   57638|1500098|t      |     1
 (4 rows)
 
 id|value
@@ -1085,7 +1228,7 @@ step s2-isolate-tenant:
 
 isolate_tenant_to_new_shard
 ---------------------------------------------------------------------
-                    1500094
+                    1500106
 (1 row)
 
 step s1-ddl:
@@ -1111,10 +1254,10 @@ step s2-print-cluster:
 
 nodeport|shardid|success|result
 ---------------------------------------------------------------------
-   57637|1500093|t      |     0
-   57637|1500094|t      |     0
-   57637|1500095|t      |     0
-   57638|1500092|t      |     0
+   57637|1500105|t      |     0
+   57637|1500106|t      |     0
+   57637|1500107|t      |     0
+   57638|1500104|t      |     0
 (4 rows)
 
 id|value
@@ -1172,7 +1315,7 @@ step s2-isolate-tenant:
 
 isolate_tenant_to_new_shard
 ---------------------------------------------------------------------
-                    1500100
+                    1500112
 (1 row)
 
 step s1-update-complex:
@@ -1201,10 +1344,10 @@ step s2-print-cluster:
 
 nodeport|shardid|success|result
 ---------------------------------------------------------------------
-   57637|1500099|t      |     0
-   57637|1500100|t      |     1
-   57637|1500101|t      |     0
-   57638|1500098|t      |     0
+   57637|1500111|t      |     0
+   57637|1500112|t      |     1
+   57637|1500113|t      |     0
+   57638|1500110|t      |     0
 (4 rows)
 
 id|value
@@ -1244,7 +1387,7 @@ step s2-isolate-tenant:
 
 isolate_tenant_to_new_shard
 ---------------------------------------------------------------------
-                    1500106
+                    1500118
 (1 row)
 
 step s1-update-complex:
@@ -1273,10 +1416,10 @@ step s2-print-cluster:
 
 nodeport|shardid|success|result
 ---------------------------------------------------------------------
-   57637|1500105|t      |     0
-   57637|1500106|t      |     1
-   57637|1500107|t      |     0
-   57638|1500104|t      |     0
+   57637|1500117|t      |     0
+   57637|1500118|t      |     1
+   57637|1500119|t      |     0
+   57638|1500116|t      |     0
 (4 rows)
 
 id|value
@@ -1308,7 +1451,7 @@ step s1-isolate-tenant:
 
 isolate_tenant_to_new_shard
 ---------------------------------------------------------------------
-                    1500112
+                    1500124
 (1 row)
 
 step s2-isolate-tenant:
@@ -1331,10 +1474,10 @@ step s2-print-cluster:
 
 nodeport|shardid|success|result
 ---------------------------------------------------------------------
-   57637|1500109|t      |     1
-   57638|1500111|t      |     0
-   57638|1500112|t      |     0
-   57638|1500113|t      |     0
+   57637|1500121|t      |     1
+   57638|1500123|t      |     0
+   57638|1500124|t      |     0
+   57638|1500125|t      |     0
 (4 rows)
 
 id|value
@@ -1363,7 +1506,7 @@ step s1-isolate-tenant:
 
 isolate_tenant_to_new_shard
 ---------------------------------------------------------------------
-                    1500118
+                    1500130
 (1 row)
 
 step s2-isolate-tenant:
@@ -1386,10 +1529,10 @@ step s2-print-cluster:
 
 nodeport|shardid|success|result
 ---------------------------------------------------------------------
-   57637|1500115|t      |     1
-   57638|1500117|t      |     0
-   57638|1500118|t      |     0
-   57638|1500119|t      |     0
+   57637|1500127|t      |     1
+   57638|1500129|t      |     0
+   57638|1500130|t      |     0
+   57638|1500131|t      |     0
 (4 rows)
 
 id|value

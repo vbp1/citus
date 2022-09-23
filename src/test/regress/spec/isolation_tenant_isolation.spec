@@ -39,6 +39,11 @@ step "s1-insert"
 	INSERT INTO isolation_table VALUES (5, 10);
 }
 
+step "s1-insert-pushable-nonfast"
+{
+	INSERT INTO isolation_table SELECT * FROM isolation_table;
+}
+
 step "s1-insert-non-pushable"
 {
 	INSERT INTO isolation_table SELECT 5;
@@ -141,6 +146,7 @@ step "s2-print-index-count"
 // we expect DML/DDL queries to be rerouted to valid shards even if the shard they are waiting for is destroyed
 permutation "s1-load-cache" "s1-insert" "s1-begin" "s1-select" "s2-begin" "s2-isolate-tenant" "s1-update" "s2-commit" "s1-commit" "s2-print-cluster"
 permutation "s1-load-cache" "s1-insert" "s1-begin" "s1-select" "s2-begin" "s2-isolate-tenant" "s1-delete" "s2-commit" "s1-commit" "s2-print-cluster"
+permutation "s1-load-cache" "s1-insert" "s1-begin" "s1-select" "s2-begin" "s2-isolate-tenant" "s1-insert-pushable-nonfast" "s2-commit" "s1-commit" "s2-print-cluster"
 permutation "s1-load-cache" "s1-begin" "s1-select" "s2-begin" "s2-isolate-tenant" "s1-insert" "s2-commit" "s1-commit" "s2-print-cluster"
 permutation "s1-load-cache" "s1-begin" "s1-select" "s2-begin" "s2-isolate-tenant" "s1-insert-non-pushable" "s2-commit" "s1-commit" "s2-print-cluster"
 permutation "s1-load-cache" "s1-begin" "s1-select" "s2-begin" "s2-isolate-tenant" "s1-insert-non-pushable-returning" "s2-commit" "s1-commit" "s2-print-cluster"
@@ -151,6 +157,7 @@ permutation "s1-load-cache" "s1-begin" "s1-select" "s2-begin" "s2-isolate-tenant
 // the same tests without loading the cache at first
 permutation "s1-insert" "s1-begin" "s1-select" "s2-begin" "s2-isolate-tenant" "s1-update" "s2-commit" "s1-commit" "s2-print-cluster"
 permutation "s1-insert" "s1-begin" "s1-select" "s2-begin" "s2-isolate-tenant" "s1-delete" "s2-commit" "s1-commit" "s2-print-cluster"
+permutation "s1-insert" "s1-begin" "s1-select" "s2-begin" "s2-isolate-tenant" "s1-insert-pushable-nonfast" "s2-commit" "s1-commit" "s2-print-cluster"
 permutation "s1-begin" "s1-select" "s2-begin" "s2-isolate-tenant" "s1-insert" "s2-commit" "s1-commit" "s2-print-cluster"
 permutation "s1-begin" "s1-select" "s2-begin" "s2-isolate-tenant" "s1-insert-non-pushable" "s2-commit" "s1-commit" "s2-print-cluster"
 permutation "s1-begin" "s1-select" "s2-begin" "s2-isolate-tenant" "s1-insert-non-pushable-returning" "s2-commit" "s1-commit" "s2-print-cluster"
