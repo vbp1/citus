@@ -39,6 +39,21 @@ step "s1-insert"
 	INSERT INTO isolation_table VALUES (5, 10);
 }
 
+step "s1-insert-non-pushable"
+{
+	INSERT INTO isolation_table SELECT 5;
+}
+
+step "s1-insert-non-pushable-returning"
+{
+	INSERT INTO isolation_table SELECT 5 RETURNING *;
+}
+
+step "s1-insert-non-pushable-conflict"
+{
+	INSERT INTO isolation_table SELECT 5 ON CONFLICT DO NOTHING;
+}
+
 step "s1-update"
 {
 	UPDATE isolation_table SET value = 5 WHERE id = 5;
@@ -123,23 +138,31 @@ step "s2-print-index-count"
 }
 
 // run tenant isolation while concurrently performing an DML and index creation
-// we expect DML/DDL queries to fail because the shard they are waiting for is destroyed
+// we expect DML/DDL queries to be rerouted to valid shards even if the shard they are waiting for is destroyed
 permutation "s1-load-cache" "s1-insert" "s1-begin" "s1-select" "s2-begin" "s2-isolate-tenant" "s1-update" "s2-commit" "s1-commit" "s2-print-cluster"
 permutation "s1-load-cache" "s1-insert" "s1-begin" "s1-select" "s2-begin" "s2-isolate-tenant" "s1-delete" "s2-commit" "s1-commit" "s2-print-cluster"
-permutation "s1-load-cache" "s1-insert" "s1-begin" "s1-select" "s2-begin" "s2-isolate-tenant" "s1-update-complex" "s2-commit" "s1-commit" "s2-print-cluster"
 permutation "s1-load-cache" "s1-begin" "s1-select" "s2-begin" "s2-isolate-tenant" "s1-insert" "s2-commit" "s1-commit" "s2-print-cluster"
+permutation "s1-load-cache" "s1-begin" "s1-select" "s2-begin" "s2-isolate-tenant" "s1-insert-non-pushable" "s2-commit" "s1-commit" "s2-print-cluster"
+permutation "s1-load-cache" "s1-begin" "s1-select" "s2-begin" "s2-isolate-tenant" "s1-insert-non-pushable-returning" "s2-commit" "s1-commit" "s2-print-cluster"
+permutation "s1-load-cache" "s1-begin" "s1-select" "s2-begin" "s2-isolate-tenant" "s1-insert-non-pushable-conflict" "s2-commit" "s1-commit" "s2-print-cluster"
 permutation "s1-load-cache" "s1-begin" "s1-select" "s2-begin" "s2-isolate-tenant" "s1-copy" "s2-commit" "s1-commit" "s2-print-cluster"
 permutation "s1-load-cache" "s1-begin" "s1-select" "s2-begin" "s2-isolate-tenant" "s1-ddl" "s2-commit" "s1-commit" "s2-print-cluster" "s2-print-index-count"
-
 
 // the same tests without loading the cache at first
 permutation "s1-insert" "s1-begin" "s1-select" "s2-begin" "s2-isolate-tenant" "s1-update" "s2-commit" "s1-commit" "s2-print-cluster"
 permutation "s1-insert" "s1-begin" "s1-select" "s2-begin" "s2-isolate-tenant" "s1-delete" "s2-commit" "s1-commit" "s2-print-cluster"
-permutation "s1-insert" "s1-begin" "s1-select" "s2-begin" "s2-isolate-tenant" "s1-update-complex" "s2-commit" "s1-commit" "s2-print-cluster"
 permutation "s1-begin" "s1-select" "s2-begin" "s2-isolate-tenant" "s1-insert" "s2-commit" "s1-commit" "s2-print-cluster"
+permutation "s1-begin" "s1-select" "s2-begin" "s2-isolate-tenant" "s1-insert-non-pushable" "s2-commit" "s1-commit" "s2-print-cluster"
+permutation "s1-begin" "s1-select" "s2-begin" "s2-isolate-tenant" "s1-insert-non-pushable-returning" "s2-commit" "s1-commit" "s2-print-cluster"
+permutation "s1-begin" "s1-select" "s2-begin" "s2-isolate-tenant" "s1-insert-non-pushable-conflict" "s2-commit" "s1-commit" "s2-print-cluster"
 permutation "s1-begin" "s1-select" "s2-begin" "s2-isolate-tenant" "s1-copy" "s2-commit" "s1-commit" "s2-print-cluster"
 permutation "s1-begin" "s1-select" "s2-begin" "s2-isolate-tenant" "s1-ddl" "s2-commit" "s1-commit" "s2-print-cluster" "s2-print-index-count"
 
+// we expect DML/DDL queries to fail because the shard they are waiting for is destroyed
+permutation "s1-load-cache" "s1-insert" "s1-begin" "s1-select" "s2-begin" "s2-isolate-tenant" "s1-update-complex" "s2-commit" "s1-commit" "s2-print-cluster"
+
+// the same tests without loading the cache at first
+permutation "s1-insert" "s1-begin" "s1-select" "s2-begin" "s2-isolate-tenant" "s1-update-complex" "s2-commit" "s1-commit" "s2-print-cluster"
 
 // concurrent tenant isolation blocks on different shards of the same table (or any colocated table)
 permutation "s1-load-cache" "s1-insert" "s1-begin" "s1-isolate-tenant" "s2-isolate-tenant" "s1-commit" "s2-print-cluster"
