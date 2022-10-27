@@ -633,7 +633,7 @@ GetSortedReferenceShardIntervals(List *relationList)
 			continue;
 		}
 
-		List *currentShardIntervalList = LoadShardIntervalList(relationId);
+		List *currentShardIntervalList = LoadShardIntervalListWithRetry(relationId);
 		shardIntervalList = lappend(shardIntervalList, linitial(
 										currentShardIntervalList));
 	}

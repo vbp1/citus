@@ -857,7 +857,7 @@ CitusTableMetadataCreateCommandList(Oid relationId)
 	commandList = lappend(commandList, metadataCommand);
 
 	/* commands to insert pg_dist_shard & pg_dist_placement entries */
-	List *shardIntervalList = LoadShardIntervalList(relationId);
+	List *shardIntervalList = LoadShardIntervalListWithRetry(relationId);
 	List *shardMetadataInsertCommandList = ShardListInsertCommand(shardIntervalList);
 	commandList = list_concat(commandList, shardMetadataInsertCommandList);
 

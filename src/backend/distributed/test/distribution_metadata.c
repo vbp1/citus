@@ -66,7 +66,7 @@ load_shard_id_array(PG_FUNCTION_ARGS)
 	int shardIdIndex = 0;
 	Oid shardIdTypeId = INT8OID;
 
-	List *shardList = LoadShardIntervalList(distributedTableId);
+	List *shardList = LoadShardIntervalListWithRetry(distributedTableId);
 
 	int shardIdCount = list_length(shardList);
 	Datum *shardIdDatumArray = palloc0(shardIdCount * sizeof(Datum));

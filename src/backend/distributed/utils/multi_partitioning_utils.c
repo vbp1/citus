@@ -364,10 +364,7 @@ CreateFixPartitionConstraintsTaskList(Oid relationId)
 		return NIL;
 	}
 
-	List *shardIntervalList = LoadShardIntervalList(relationId);
-
-	/* lock metadata before getting placement lists */
-	LockShardListMetadata(shardIntervalList, ShareLock);
+	List *shardIntervalList = LoadShardIntervalListWithRetry(relationId);
 
 	ShardInterval *shardInterval = NULL;
 	foreach_ptr(shardInterval, shardIntervalList)
@@ -535,7 +532,8 @@ CreateFixPartitionShardIndexNames(Oid parentRelationId, Oid partitionRelationId,
 	if (OidIsValid(partitionRelationId))
 	{
 		/* if a partition was provided we only need to lock that partition's metadata */
-		List *partitionShardIntervalList = LoadShardIntervalList(partitionRelationId);
+		List *partitionShardIntervalList = LoadShardIntervalListWithRetry(
+			partitionRelationId);
 		LockShardListMetadata(partitionShardIntervalList, ShareLock);
 	}
 	else
@@ -543,15 +541,13 @@ CreateFixPartitionShardIndexNames(Oid parentRelationId, Oid partitionRelationId,
 		Oid partitionId = InvalidOid;
 		foreach_oid(partitionId, partitionList)
 		{
-			List *partitionShardIntervalList = LoadShardIntervalList(partitionId);
+			List *partitionShardIntervalList = LoadShardIntervalListWithRetry(
+				partitionId);
 			LockShardListMetadata(partitionShardIntervalList, ShareLock);
 		}
 	}
 
-	List *parentShardIntervalList = LoadShardIntervalList(parentRelationId);
-
-	/* lock metadata before getting placement lists */
-	LockShardListMetadata(parentShardIntervalList, ShareLock);
+	List *parentShardIntervalList = LoadShardIntervalListWithRetry(parentRelationId);
 
 	MemoryContext localContext = AllocSetContextCreate(CurrentMemoryContext,
 													   "CreateFixPartitionShardIndexNames",
@@ -696,7 +692,7 @@ WorkerFixPartitionShardIndexNamesCommandListForPartitionIndex(Oid partitionIndex
 	char *partitionIndexName = get_rel_name(partitionIndexId);
 	char *partitionName = get_rel_name(partitionId);
 	char *partitionSchemaName = get_namespace_name(get_rel_namespace(partitionId));
-	List *partitionShardIntervalList = LoadShardIntervalList(partitionId);
+	List *partitionShardIntervalList = LoadShardIntervalListWithRetry(partitionId);
 
 	ShardInterval *partitionShardInterval = NULL;
 	foreach_ptr(partitionShardInterval, partitionShardIntervalList)
@@ -1309,7 +1305,7 @@ PartitionBound(Oid partitionId)
 List *
 ListShardsUnderParentRelation(Oid relationId)
 {
-	List *shardList = LoadShardIntervalList(relationId);
+	List *shardList = LoadShardIntervalListWithRetry(relationId);
 
 	if (PartitionedTable(relationId))
 	{

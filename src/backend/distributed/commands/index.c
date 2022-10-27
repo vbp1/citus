@@ -909,15 +909,12 @@ CreateIndexTaskList(IndexStmt *indexStmt)
 {
 	List *taskList = NIL;
 	Oid relationId = CreateIndexStmtGetRelationId(indexStmt);
-	List *shardIntervalList = LoadShardIntervalList(relationId);
+	List *shardIntervalList = LoadShardIntervalListWithRetry(relationId);
 	StringInfoData ddlString;
 	uint64 jobId = INVALID_JOB_ID;
 	int taskId = 1;
 
 	initStringInfo(&ddlString);
-
-	/* lock metadata before getting placement lists */
-	LockShardListMetadata(shardIntervalList, ShareLock);
 
 	ShardInterval *shardInterval = NULL;
 	foreach_ptr(shardInterval, shardIntervalList)
@@ -954,15 +951,12 @@ static List *
 CreateReindexTaskList(Oid relationId, ReindexStmt *reindexStmt)
 {
 	List *taskList = NIL;
-	List *shardIntervalList = LoadShardIntervalList(relationId);
+	List *shardIntervalList = LoadShardIntervalListWithRetry(relationId);
 	StringInfoData ddlString;
 	uint64 jobId = INVALID_JOB_ID;
 	int taskId = 1;
 
 	initStringInfo(&ddlString);
-
-	/* lock metadata before getting placement lists */
-	LockShardListMetadata(shardIntervalList, ShareLock);
 
 	ShardInterval *shardInterval = NULL;
 	foreach_ptr(shardInterval, shardIntervalList)
@@ -1269,7 +1263,7 @@ static List *
 DropIndexTaskList(Oid relationId, Oid indexId, DropStmt *dropStmt)
 {
 	List *taskList = NIL;
-	List *shardIntervalList = LoadShardIntervalList(relationId);
+	List *shardIntervalList = LoadShardIntervalListWithRetry(relationId);
 	char *indexName = get_rel_name(indexId);
 	Oid schemaId = get_rel_namespace(indexId);
 	char *schemaName = get_namespace_name(schemaId);
@@ -1278,9 +1272,6 @@ DropIndexTaskList(Oid relationId, Oid indexId, DropStmt *dropStmt)
 	int taskId = 1;
 
 	initStringInfo(&ddlString);
-
-	/* lock metadata before getting placement lists */
-	LockShardListMetadata(shardIntervalList, ShareLock);
 
 	ShardInterval *shardInterval = NULL;
 	foreach_ptr(shardInterval, shardIntervalList)

@@ -87,6 +87,7 @@ static bool DistributedTableSize(Oid relationId, SizeQueryType sizeQueryType,
 static bool DistributedTableSizeOnWorker(WorkerNode *workerNode, Oid relationId,
 										 SizeQueryType sizeQueryType, bool failOnError,
 										 uint64 *tableSize);
+static List * LoadShardIntervalList(Oid relationId);
 static List * ShardIntervalsOnWorkerGroup(WorkerNode *workerNode, Oid relationId);
 static char * GenerateShardStatisticsQueryForShardList(List *shardIntervalList);
 static char * GenerateSizeQueryForRelationNameList(List *quotedShardNames,
@@ -1072,7 +1073,7 @@ TableShardReplicationFactor(Oid relationId)
 {
 	uint32 replicationCount = 0;
 
-	List *shardIntervalList = LoadShardIntervalList(relationId);
+	List *shardIntervalList = LoadShardIntervalListWithRetry(relationId);
 	ShardInterval *shardInterval = NULL;
 	foreach_ptr(shardInterval, shardIntervalList)
 	{
@@ -1117,14 +1118,14 @@ TableShardReplicationFactor(Oid relationId)
 
 
 /*
- * LoadShardIntervalList returns a list of shard intervals related for a given
+ * LoadShardIntervalListWithRetry returns a list of shard intervals related for a given
  * distributed table. The function returns an empty list if no shards can be
  * found for the given relation.
- * Since LoadShardIntervalList relies on sortedShardIntervalArray, it returns
+ * Since LoadShardIntervalListWithRetry relies on sortedShardIntervalArray, it returns
  * a shard interval list whose elements are sorted on shardminvalue. Shard intervals
  * with uninitialized shard min/max values are placed in the end of the list.
  */
-List *
+static List *
 LoadShardIntervalList(Oid relationId)
 {
 	CitusTableCacheEntry *cacheEntry = GetCitusTableCacheEntry(relationId);
@@ -1136,6 +1137,24 @@ LoadShardIntervalList(Oid relationId)
 			CopyShardInterval(cacheEntry->sortedShardIntervalArray[i]);
 		shardList = lappend(shardList, newShardInterval);
 	}
+
+	return shardList;
+}
+
+
+/*
+ * LoadShardIntervalListWithRetry reloads the shardintervallist in case a concurrent
+ * shard modification happened.
+ */
+List *
+LoadShardIntervalListWithRetry(Oid relationId)
+{
+	List *shardList = LoadShardIntervalList(relationId);
+
+	/* prevent concurrent placement changes and non-commutative DML statements */
+	LockShardListMetadata(shardList, ShareLock);
+
+	shardList = LoadShardIntervalList(relationId);
 
 	return shardList;
 }

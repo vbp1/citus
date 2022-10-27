@@ -262,8 +262,7 @@ CreateColocatedShards(Oid targetRelationId, Oid sourceRelationId, bool
 	LockRelationOid(sourceRelationId, AccessShareLock);
 
 	/* prevent placement changes of the source relation until we colocate with them */
-	List *sourceShardIntervalList = LoadShardIntervalList(sourceRelationId);
-	LockShardListMetadata(sourceShardIntervalList, ShareLock);
+	List *sourceShardIntervalList = LoadShardIntervalListWithRetry(sourceRelationId);
 
 	/* validate that shards haven't already been created for this table */
 	List *existingShardList = LoadShardList(targetRelationId);

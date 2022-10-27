@@ -132,7 +132,7 @@ AcquireExecutorShardLocksForRelationRowLockList(List *relationRowLockList)
 
 		if (IsCitusTableType(relationId, REFERENCE_TABLE))
 		{
-			List *shardIntervalList = LoadShardIntervalList(relationId);
+			List *shardIntervalList = LoadShardIntervalListWithRetry(relationId);
 
 			if (rowLockStrength == LCS_FORKEYSHARE || rowLockStrength == LCS_FORSHARE)
 			{

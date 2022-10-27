@@ -317,12 +317,8 @@ void
 ErrorIfShardPlacementsNotColocated(Oid leftRelationId, Oid rightRelationId)
 {
 	/* get sorted shard interval lists for both tables */
-	List *leftShardIntervalList = LoadShardIntervalList(leftRelationId);
-	List *rightShardIntervalList = LoadShardIntervalList(rightRelationId);
-
-	/* prevent concurrent placement changes */
-	LockShardListMetadata(leftShardIntervalList, ShareLock);
-	LockShardListMetadata(rightShardIntervalList, ShareLock);
+	List *leftShardIntervalList = LoadShardIntervalListWithRetry(leftRelationId);
+	List *rightShardIntervalList = LoadShardIntervalListWithRetry(rightRelationId);
 
 	char *leftRelationName = get_rel_name(leftRelationId);
 	char *rightRelationName = get_rel_name(rightRelationId);

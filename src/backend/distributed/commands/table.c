@@ -3200,13 +3200,10 @@ static List *
 InterShardDDLTaskList(Oid leftRelationId, Oid rightRelationId,
 					  const char *commandString)
 {
-	List *leftShardList = LoadShardIntervalList(leftRelationId);
+	List *leftShardList = LoadShardIntervalListWithRetry(leftRelationId);
 	List *rightShardList = CreateRightShardListForInterShardDDLTask(rightRelationId,
 																	leftRelationId,
 																	leftShardList);
-
-	/* lock metadata before getting placement lists */
-	LockShardListMetadata(leftShardList, ShareLock);
 
 	uint64 jobId = INVALID_JOB_ID;
 	int taskId = 1;
@@ -3262,7 +3259,7 @@ static List *
 CreateRightShardListForInterShardDDLTask(Oid rightRelationId, Oid leftRelationId,
 										 List *leftShardList)
 {
-	List *rightShardList = LoadShardIntervalList(rightRelationId);
+	List *rightShardList = LoadShardIntervalListWithRetry(rightRelationId);
 
 
 	if (!IsCitusTableType(leftRelationId, CITUS_LOCAL_TABLE) &&

@@ -159,7 +159,7 @@ EnsureReferenceTablesExistOnAllNodesExtended(char transferMode)
 
 		Oid referenceTableId = linitial_oid(referenceTableIdList);
 		referenceTableName = get_rel_name(referenceTableId);
-		List *shardIntervalList = LoadShardIntervalList(referenceTableId);
+		List *shardIntervalList = LoadShardIntervalListWithRetry(referenceTableId);
 		if (list_length(shardIntervalList) == 0)
 		{
 			/* check for corrupt metadata */
@@ -326,7 +326,7 @@ HasNodesWithMissingReferenceTables(List **referenceTableList)
 	}
 
 	Oid referenceTableId = linitial_oid(referenceTableIdList);
-	List *shardIntervalList = LoadShardIntervalList(referenceTableId);
+	List *shardIntervalList = LoadShardIntervalListWithRetry(referenceTableId);
 	if (list_length(shardIntervalList) == 0)
 	{
 		const char *referenceTableName = get_rel_name(referenceTableId);
@@ -694,7 +694,7 @@ ReplicateAllReferenceTablesToNode(WorkerNode *workerNode)
 		Oid referenceTableId = InvalidOid;
 		foreach_oid(referenceTableId, referenceTableList)
 		{
-			List *shardIntervalList = LoadShardIntervalList(referenceTableId);
+			List *shardIntervalList = LoadShardIntervalListWithRetry(referenceTableId);
 			ShardInterval *shardInterval = (ShardInterval *) linitial(shardIntervalList);
 
 			List *shardPlacementList =
@@ -801,7 +801,7 @@ NodeHasAllReferenceTableReplicas(WorkerNode *workerNode)
 	}
 
 	Oid referenceTableId = linitial_oid(referenceTableIdList);
-	List *shardIntervalList = LoadShardIntervalList(referenceTableId);
+	List *shardIntervalList = LoadShardIntervalListWithRetry(referenceTableId);
 	if (list_length(shardIntervalList) != 1)
 	{
 		/* check for corrupt metadata */

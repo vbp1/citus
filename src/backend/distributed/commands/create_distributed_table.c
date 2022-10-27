@@ -455,7 +455,7 @@ CreateDistributedTableConcurrently(Oid relationId, char *distributionColumnName,
 
 	WarnIfTableHaveNoReplicaIdentity(relationId);
 
-	List *shardList = LoadShardIntervalList(relationId);
+	List *shardList = LoadShardIntervalListWithRetry(relationId);
 
 	/*
 	 * It's technically possible for the table to have been concurrently
@@ -540,7 +540,7 @@ CreateDistributedTableConcurrently(Oid relationId, char *distributionColumnName,
 
 	if (colocatedTableId != InvalidOid)
 	{
-		List *colocatedShardList = LoadShardIntervalList(colocatedTableId);
+		List *colocatedShardList = LoadShardIntervalListWithRetry(colocatedTableId);
 
 		/*
 		 * Match the shard ranges of an existing table.

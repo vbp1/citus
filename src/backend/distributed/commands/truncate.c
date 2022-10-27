@@ -127,10 +127,7 @@ TruncateTaskList(Oid relationId)
 	char *schemaName = get_namespace_name(schemaId);
 	char *relationName = get_rel_name(relationId);
 
-	List *shardIntervalList = LoadShardIntervalList(relationId);
-
-	/* lock metadata before getting placement lists */
-	LockShardListMetadata(shardIntervalList, ShareLock);
+	List *shardIntervalList = LoadShardIntervalListWithRetry(relationId);
 
 	ShardInterval *shardInterval = NULL;
 	foreach_ptr(shardInterval, shardIntervalList)

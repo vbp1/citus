@@ -244,10 +244,7 @@ VacuumTaskList(Oid relationId, CitusVacuumParams vacuumParams, List *vacuumColum
 		}
 	}
 
-	List *shardIntervalList = LoadShardIntervalList(relationId);
-
-	/* grab shard lock before getting placement list */
-	LockShardListMetadata(shardIntervalList, ShareLock);
+	List *shardIntervalList = LoadShardIntervalListWithRetry(relationId);
 
 	ShardInterval *shardInterval = NULL;
 	foreach_ptr(shardInterval, shardIntervalList)

@@ -341,8 +341,6 @@ static void FinishLocalColocatedIntermediateFiles(CitusCopyDestReceiver *copyDes
 static void CloneCopyOutStateForLocalCopy(CopyOutState from, CopyOutState to);
 static LocalCopyStatus GetLocalCopyStatus(void);
 static bool ShardIntervalListHasLocalPlacements(List *shardIntervalList);
-static void EnsureHaveShardsToCopy(List *shardIntervalList, bool isHashDistribiuted,
-								   char *relationName);
 static void LogLocalCopyToRelationExecution(uint64 shardId);
 static void LogLocalCopyToFileExecution(uint64 shardId);
 
@@ -2026,36 +2024,6 @@ ShardIntervalListHasLocalPlacements(List *shardIntervalList)
 
 
 /*
- * EnsureHaveShardsToCopy ensures that given shard interval list
- * has shards to copy.
- */
-static void
-EnsureHaveShardsToCopy(List *shardIntervalList, bool isHashDistribiuted,
-					   char *relationName)
-{
-	if (shardIntervalList == NIL)
-	{
-		if (isHashDistribiuted)
-		{
-			ereport(ERROR, (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
-							errmsg("could not find any shards into which to copy"),
-							errdetail("No shards exist for distributed table \"%s\".",
-									  relationName),
-							errhint("Run master_create_worker_shards to create shards "
-									"and try again.")));
-		}
-		else
-		{
-			ereport(ERROR, (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
-							errmsg("could not find any shards into which to copy"),
-							errdetail("No shards exist for distributed table \"%s\".",
-									  relationName)));
-		}
-	}
-}
-
-
-/*
  * CitusCopyDestReceiverStartup implements the rStartup interface of
  * CitusCopyDestReceiver. It opens the relation, acquires necessary
  * locks, and initializes the state required for doing the copy.
@@ -2088,9 +2056,26 @@ CitusCopyDestReceiverStartup(DestReceiver *dest, int operation,
 	copyDest->tupleDescriptor = inputTupleDescriptor;
 
 	/* load the list of shards and verify that we have shards to copy into */
-	List *shardIntervalList = LoadShardIntervalList(tableId);
-	bool isHashDistributed = IsCitusTableTypeCacheEntry(cacheEntry, HASH_DISTRIBUTED);
-	EnsureHaveShardsToCopy(shardIntervalList, isHashDistributed, relationName);
+	List *shardIntervalList = LoadShardIntervalListWithRetry(tableId);
+	if (shardIntervalList == NIL)
+	{
+		if (IsCitusTableTypeCacheEntry(cacheEntry, HASH_DISTRIBUTED))
+		{
+			ereport(ERROR, (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+							errmsg("could not find any shards into which to copy"),
+							errdetail("No shards exist for distributed table \"%s\".",
+									  relationName),
+							errhint("Run master_create_worker_shards to create shards "
+									"and try again.")));
+		}
+		else
+		{
+			ereport(ERROR, (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+							errmsg("could not find any shards into which to copy"),
+							errdetail("No shards exist for distributed table \"%s\".",
+									  relationName)));
+		}
+	}
 
 	/* error if any shard missing min/max values */
 	if (cacheEntry->hasUninitializedShardInterval)
@@ -2105,16 +2090,6 @@ CitusCopyDestReceiverStartup(DestReceiver *dest, int operation,
 									  relationName)));
 		}
 	}
-
-	/* prevent concurrent placement changes and non-commutative DML statements */
-	LockShardListMetadata(shardIntervalList, ShareLock);
-
-	/*
-	 * we should refetch the shard interval list because we fetched the shards before
-	 * acquiring the lock for shards. They could have been changed.
-	 */
-	shardIntervalList = LoadShardIntervalList(tableId);
-	EnsureHaveShardsToCopy(shardIntervalList, isHashDistributed, relationName);
 
 	/*
 	 * Prevent concurrent UPDATE/DELETE on replication factor >1
@@ -3042,7 +3017,7 @@ CitusCopyTo(CopyStmt *copyStatement, QueryCompletion *completionTag)
 
 	SendCopyBegin(copyOutState);
 
-	List *shardIntervalList = LoadShardIntervalList(relationId);
+	List *shardIntervalList = LoadShardIntervalListWithRetry(relationId);
 
 	foreach(shardIntervalCell, shardIntervalList)
 	{

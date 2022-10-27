@@ -843,7 +843,7 @@ IsLocallyAccessibleCitusLocalTable(Oid relationId)
 		return false;
 	}
 
-	List *shardIntervalList = LoadShardIntervalList(relationId);
+	List *shardIntervalList = LoadShardIntervalListWithRetry(relationId);
 
 	/*
 	 * Citus local tables should always have exactly one shard, but we have
@@ -2616,7 +2616,7 @@ TargetShardIntervalForFastPathQuery(Query *query, bool *isMultiShardQuery,
 	if (IsCitusTableType(relationId, CITUS_TABLE_WITH_NO_DIST_KEY))
 	{
 		/* we don't need to do shard pruning for non-distributed tables */
-		return list_make1(LoadShardIntervalList(relationId));
+		return list_make1(LoadShardIntervalListWithRetry(relationId));
 	}
 
 	if (inputDistributionKeyValue && !inputDistributionKeyValue->constisnull)
@@ -2908,7 +2908,7 @@ BuildRoutesForInsert(Query *query, DeferredErrorMessage **planningError)
 	/* reference tables and citus local tables can only have one shard */
 	if (IsCitusTableTypeCacheEntry(cacheEntry, CITUS_TABLE_WITH_NO_DIST_KEY))
 	{
-		List *shardIntervalList = LoadShardIntervalList(distributedTableId);
+		List *shardIntervalList = LoadShardIntervalListWithRetry(distributedTableId);
 
 		int shardCount = list_length(shardIntervalList);
 		if (shardCount != 1)

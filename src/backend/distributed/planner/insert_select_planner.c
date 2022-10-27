@@ -280,15 +280,7 @@ CreateDistributedInsertSelectPlan(Query *originalQuery,
 	CitusTableCacheEntry *targetCacheEntry = GetCitusTableCacheEntry(targetRelationId);
 
 	/* grab shared metadata lock to stop concurrent placement additions */
-	List *shardIntervalList = LoadShardIntervalList(targetRelationId);
-	LockShardListMetadata(shardIntervalList, ShareLock);
-
-	/*
-	 * refetch shard list in case a concurrent shard metadata update
-	 * before acquiring the lock. The shards could have been changed
-	 * before we acquire the locks for the shards.
-	 */
-	shardIntervalList = LoadShardIntervalList(targetRelationId);
+	List *shardIntervalList = LoadShardIntervalListWithRetry(targetRelationId);
 
 	RelationRestrictionContext *relationRestrictionContext =
 		plannerRestrictionContext->relationRestrictionContext;
