@@ -1703,7 +1703,7 @@ RegisterCitusConfigVariables(void)
 			"represents the possible maximum number of task executors."),
 		&MaxBackgroundTaskExecutors,
 		4, 1, 8,
-		PGC_POSTMASTER,
+		PGC_SIGHUP,
 		GUC_STANDARD,
 		NULL, NULL, NULL);
 
