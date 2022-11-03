@@ -116,6 +116,56 @@ SELECT task_id, status FROM pg_dist_background_task
 SELECT citus_job_cancel(:job_id1);
 SELECT citus_job_cancel(:job_id3);
 
+-- verify that a task, previously not started due to lack of workers, is executed after we increase max worker count
+INSERT INTO pg_dist_background_job (job_type, description) VALUES ('test_job', 'simple test to verify max parallel background execution') RETURNING job_id AS job_id1 \gset
+INSERT INTO pg_dist_background_task (job_id, command) VALUES (:job_id1, $job$ SELECT pg_sleep(5); $job$) RETURNING task_id AS task_id1 \gset
+INSERT INTO pg_dist_background_task (job_id, command) VALUES (:job_id1, $job$ SELECT pg_sleep(5); $job$) RETURNING task_id AS task_id2 \gset
+INSERT INTO pg_dist_background_task (job_id, command) VALUES (:job_id1, $job$ SELECT pg_sleep(5); $job$) RETURNING task_id AS task_id3 \gset
+INSERT INTO pg_dist_background_job (job_type, description) VALUES ('test_job', 'simple test to verify max parallel background execution') RETURNING job_id AS job_id2 \gset
+INSERT INTO pg_dist_background_task (job_id, command) VALUES (:job_id2, $job$ SELECT pg_sleep(5); $job$) RETURNING task_id AS task_id4 \gset
+INSERT INTO pg_dist_background_job (job_type, description) VALUES ('test_job', 'simple test to verify max parallel background execution') RETURNING job_id AS job_id3 \gset
+INSERT INTO pg_dist_background_task (job_id, command) VALUES (:job_id3, $job$ SELECT pg_sleep(5); $job$) RETURNING task_id AS task_id5 \gset
+
+SELECT pg_sleep(2); -- we assume this is enough time for all tasks to be in running status except the last one due to parallel worker limit
+
+SELECT task_id, status FROM pg_dist_background_task
+    WHERE task_id IN (:task_id1, :task_id2, :task_id3, :task_id4, :task_id5)
+    ORDER BY task_id; -- show that last task is not running but ready to run(runnable)
+
+ALTER SYSTEM SET citus.max_background_task_executors TO 5;
+SELECT pg_reload_conf(); -- the last runnable task will be running after change
+SELECT citus_job_wait(:job_id3, desired_status => 'running');
+SELECT task_id, status FROM pg_dist_background_task
+    WHERE task_id IN (:task_id1, :task_id2, :task_id3, :task_id4, :task_id5)
+    ORDER BY task_id;  -- show that last task is running
+
+SELECT citus_job_cancel(:job_id1);
+SELECT citus_job_cancel(:job_id2);
+SELECT citus_job_cancel(:job_id3);
+
+-- verify that upon termination signal, all tasks fail and retry policy sets their status back to runnable
+INSERT INTO pg_dist_background_job (job_type, description) VALUES ('test_job', 'simple test to verify max parallel background execution') RETURNING job_id AS job_id1 \gset
+INSERT INTO pg_dist_background_task (job_id, command) VALUES (:job_id1, $job$ SELECT pg_sleep(500); $job$) RETURNING task_id AS task_id1 \gset
+INSERT INTO pg_dist_background_job (job_type, description) VALUES ('test_job', 'simple test to verify max parallel background execution') RETURNING job_id AS job_id2 \gset
+INSERT INTO pg_dist_background_task (job_id, command) VALUES (:job_id2, $job$ SELECT pg_sleep(500); $job$) RETURNING task_id AS task_id2 \gset
+
+SELECT citus_job_wait(:job_id1, desired_status => 'running');
+SELECT citus_job_wait(:job_id2, desired_status => 'running');
+
+SELECT task_id, status FROM pg_dist_background_task
+    WHERE task_id IN (:task_id1, :task_id2)
+    ORDER BY task_id;
+
+
+SELECT pid AS monitor_pid FROM pg_stat_activity WHERE application_name ~ 'task queue monitor' \gset
+SELECT pg_terminate_backend(:monitor_pid); -- terminate monitor process
+
+SELECT pg_sleep(2); -- wait enough to show that tasks are terminated
+
+SELECT task_id, status FROM pg_dist_background_task
+    WHERE task_id IN (:task_id1, :task_id2)
+    ORDER BY task_id;
+
 -- verify that task is not starved by currently long running task
 INSERT INTO pg_dist_background_job (job_type, description) VALUES ('test_job', 'simple test to verify max parallel background execution') RETURNING job_id AS job_id1 \gset
 INSERT INTO pg_dist_background_task (job_id, command) VALUES (:job_id1, $job$ SELECT pg_sleep(5000); $job$) RETURNING task_id AS task_id1 \gset

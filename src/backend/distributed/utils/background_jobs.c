@@ -101,6 +101,12 @@ static void AssignRunnableTasks(HTAB *backgroundExecutorHandles,
 static List * GetRunningTaskEntries(HTAB *backgroundExecutorHandles);
 static shm_mq_result ReadFromExecutorQueue(dsm_segment *seg, StringInfo message,
 										   bool *hadError);
+static void QueueMonitorSigTermHandler(SIGNAL_ARGS);
+static void QueueMonitorSigHupHandler(SIGNAL_ARGS);
+
+/* flags set by signal handlers */
+static volatile sig_atomic_t GotSigterm = false;
+static volatile sig_atomic_t GotSighup = false;
 
 PG_FUNCTION_INFO_V1(citus_job_cancel);
 PG_FUNCTION_INFO_V1(citus_job_wait);
@@ -562,6 +568,55 @@ GetRunningTaskEntries(HTAB *backgroundExecutorHandles)
 
 
 /*
+ * QueueMonitorSigHupHandler handles SIGHUP to update monitor related config params.
+ */
+static void
+QueueMonitorSigHupHandler(SIGNAL_ARGS)
+{
+	GotSighup = true;
+
+	if (MyProc)
+	{
+		SetLatch(&MyProc->procLatch);
+	}
+}
+
+
+/*
+ * QueueMonitorSigTermHandler handles SIGTERM by setting a flag to inform the monitor process
+ * so that it can terminate active task executors properly. It also sets the latch to awake the
+ * monitor if it waits on it.
+ */
+static void
+QueueMonitorSigTermHandler(SIGNAL_ARGS)
+{
+	GotSigterm = true;
+
+	if (MyProc)
+	{
+		SetLatch(&MyProc->procLatch);
+	}
+}
+
+
+/*
+ * TerminateAllTaskExecutors terminates task executors given in the hash map.
+ */
+static void
+TerminateAllTaskExecutors(HTAB *backgroundExecutorHandles)
+{
+	HASH_SEQ_STATUS status;
+	BackgroundExecutorHashEntry *backgroundExecutorHashEntry;
+	hash_seq_init(&status, backgroundExecutorHandles);
+
+	while ((backgroundExecutorHashEntry = hash_seq_search(&status)) != NULL)
+	{
+		TerminateBackgroundWorker(backgroundExecutorHashEntry->handle);
+	}
+}
+
+
+/*
  * CitusBackgroundTaskQueueMonitorMain is the main entry point for the background worker
  * running the background tasks queue monitor.
  *
@@ -578,14 +633,24 @@ GetRunningTaskEntries(HTAB *backgroundExecutorHandles)
 void
 CitusBackgroundTaskQueueMonitorMain(Datum arg)
 {
+	/* handle SIGTERM to properly kill active task executors */
+	pqsignal(SIGTERM, QueueMonitorSigTermHandler);
+
+	/* ignore SIGINT signal */
+	pqsignal(SIGINT, SIG_IGN);
+
+	/* handle SIGHUP to update MaxBackgroundTaskExecutors */
+	pqsignal(SIGHUP, QueueMonitorSigHupHandler);
+
+	/* ready to handle signals */
+	BackgroundWorkerUnblockSignals();
+
 	Oid databaseOid = DatumGetObjectId(arg);
 
 	/* extension owner is passed via bgw_extra */
 	Oid extensionOwner = InvalidOid;
 	memcpy_s(&extensionOwner, sizeof(extensionOwner),
 			 MyBgworkerEntry->bgw_extra, sizeof(Oid));
-
-	BackgroundWorkerUnblockSignals();
 
 	/* connect to database, after that we can actually access catalogs */
 	BackgroundWorkerInitializeConnectionByOid(databaseOid, extensionOwner, 0);
@@ -626,10 +691,6 @@ CitusBackgroundTaskQueueMonitorMain(Datum arg)
 	 * cause conflicts on processing the tasks in the catalog table as well as violate
 	 * parallelism guarantees. To make sure there is at most, exactly one backend running
 	 * we take a session lock on the CITUS_BACKGROUND_TASK_MONITOR operation.
-	 *
-	 * TODO now that we have a lock, we should install a term handler to terminate any
-	 * 'child' backend when we are terminated. Otherwise we will still have a situation
-	 * where the actual task could be running multiple times.
 	 */
 	LOCKTAG tag = { 0 };
 	SET_LOCKTAG_CITUS_OPERATION(tag, CITUS_BACKGROUND_TASK_MONITOR);
@@ -674,6 +735,9 @@ CitusBackgroundTaskQueueMonitorMain(Datum arg)
 		.ctx = backgroundTaskContext
 	};
 
+	/* flag to prevent duplicate termination of task executors */
+	bool termHandleStarted = false;
+
 	/* loop exits if there is no running tasks left */
 	bool hasAnyTask = true;
 	while (hasAnyTask)
@@ -681,15 +745,40 @@ CitusBackgroundTaskQueueMonitorMain(Datum arg)
 		/* handle signals */
 		CHECK_FOR_INTERRUPTS();
 
+		/*
+		 * if the flag is set, we should terminate all task executor workers to prevent duplicate
+		 * runs of the same task on the next start of the monitor, which is dangerous for non-idempotent
+		 * tasks. We do not break the loop here as we want to reflect tasks' messages. Hence, we wait until
+		 * all tasks finish and also do not allow new runnable tasks to start running. After all current tasks
+		 * finish, we can exit the loop safely.
+		 */
+		if (GotSigterm && !termHandleStarted)
+		{
+			ereport(LOG, (errmsg("handling termination signal")));
+			TerminateAllTaskExecutors(backgroundExecutorHandles);
+			termHandleStarted = true;
+		}
+
+		if (GotSighup)
+		{
+			GotSighup = false;
+
+			/* update max_background_task_executors if changed */
+			ProcessConfigFile(PGC_SIGHUP);
+		}
+
 		/* invalidate cache for new data in catalog */
 		InvalidateMetadataSystemCache();
 
-		/* assign runnable tasks, if any, to new task executors in a transaction */
-		StartTransactionCommand();
-		PushActiveSnapshot(GetTransactionSnapshot());
-		AssignRunnableTasks(backgroundExecutorHandles, &queueMonitorExecutionContext);
-		PopActiveSnapshot();
-		CommitTransactionCommand();
+		/* assign runnable tasks, if any, to new task executors in a transaction if we do not have SIGTERM */
+		if (!GotSigterm)
+		{
+			StartTransactionCommand();
+			PushActiveSnapshot(GetTransactionSnapshot());
+			AssignRunnableTasks(backgroundExecutorHandles, &queueMonitorExecutionContext);
+			PopActiveSnapshot();
+			CommitTransactionCommand();
+		}
 
 		/* get running task entries from hash table */
 		List *runningTaskEntries = GetRunningTaskEntries(backgroundExecutorHandles);
@@ -775,9 +864,6 @@ CitusBackgroundTaskQueueMonitorMain(Datum arg)
 						LockRelationOid(DistBackgroundTaskRelationId(), ExclusiveLock);
 
 						task = GetBackgroundTaskByTaskId(handleEntry->taskid);
-
-						ereport(LOG, (errmsg("found task with jobid/taskid: %ld/%ld",
-											 task->jobid, task->taskid)));
 
 						if (!task || task->status == BACKGROUND_TASK_STATUS_CANCELLING)
 						{
@@ -959,6 +1045,11 @@ CitusBackgroundTaskQueueMonitorMain(Datum arg)
 
 	MemoryContextSwitchTo(firstContext);
 	MemoryContextDelete(backgroundTaskContext);
+
+	if (GotSigterm)
+	{
+		proc_exit(1);
+	}
 
 	proc_exit(0);
 }
@@ -1424,10 +1515,6 @@ CitusBackgroundJobExecutorErrorCallback(void *arg)
 void
 CitusBackgroundTaskExecutor(Datum main_arg)
 {
-	/*
-	 * TODO figure out if we need this signal handler that is in pgcron
-	 * pqsignal(SIGTERM, pg_cron_background_worker_sigterm);
-	 */
 	BackgroundWorkerUnblockSignals();
 
 	/* Set up a dynamic shared memory segment. */
