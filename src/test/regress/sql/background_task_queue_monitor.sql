@@ -48,7 +48,7 @@ INSERT INTO pg_dist_background_job (job_type, description) VALUES ('test_job', '
 INSERT INTO pg_dist_background_task (job_id, command) VALUES (:job_id, $job$ SELECT 1/0; $job$) RETURNING task_id \gset
 
 SELECT citus_job_wait(:job_id, desired_status => 'running');
-SELECT pg_sleep(.1); -- make sure it has time to error after it started running
+SELECT citus_task_wait(:task_id, desired_status => 'runnable'); -- shows that we hit the failure because we set task status as runnable to retry it
 
 SELECT status, pid, retry_count, NOT(message = '') AS has_message, (not_before > now()) AS scheduled_into_the_future FROM pg_dist_background_task WHERE job_id = :job_id ORDER BY task_id ASC;
 
@@ -88,6 +88,7 @@ SELECT pg_sleep(.1); -- improve chances of hitting the failure
 
 SELECT citus_job_cancel(:job_id);
 SELECT citus_job_wait(:job_id); -- wait for the job to be cancelled
+
 SELECT state, NOT(started_at IS NULL) AS did_start FROM pg_dist_background_job WHERE job_id = :job_id;
 SELECT status, NOT(message = '') AS did_start FROM pg_dist_background_task WHERE job_id = :job_id ORDER BY task_id ASC;
 
@@ -101,7 +102,11 @@ INSERT INTO pg_dist_background_task (job_id, command) VALUES (:job_id2, $job$ SE
 INSERT INTO pg_dist_background_job (job_type, description) VALUES ('test_job', 'simple test to verify max parallel background execution') RETURNING job_id AS job_id3 \gset
 INSERT INTO pg_dist_background_task (job_id, command) VALUES (:job_id3, $job$ SELECT pg_sleep(5); $job$) RETURNING task_id AS task_id5 \gset
 
-SELECT pg_sleep(2); -- we assume this is enough time for all tasks to be in running status except the last one due to parallel worker limit
+SELECT citus_task_wait(:task_id1, desired_status => 'running');
+SELECT citus_task_wait(:task_id2, desired_status => 'running');
+SELECT citus_task_wait(:task_id3, desired_status => 'running');
+SELECT citus_task_wait(:task_id4, desired_status => 'running');
+SELECT citus_task_wait(:task_id5, desired_status => 'runnable');
 
 SELECT task_id, status FROM pg_dist_background_task
     WHERE task_id IN (:task_id1, :task_id2, :task_id3, :task_id4, :task_id5)
@@ -126,7 +131,11 @@ INSERT INTO pg_dist_background_task (job_id, command) VALUES (:job_id2, $job$ SE
 INSERT INTO pg_dist_background_job (job_type, description) VALUES ('test_job', 'simple test to verify max parallel background execution') RETURNING job_id AS job_id3 \gset
 INSERT INTO pg_dist_background_task (job_id, command) VALUES (:job_id3, $job$ SELECT pg_sleep(5); $job$) RETURNING task_id AS task_id5 \gset
 
-SELECT pg_sleep(2); -- we assume this is enough time for all tasks to be in running status except the last one due to parallel worker limit
+SELECT citus_task_wait(:task_id1, desired_status => 'running');
+SELECT citus_task_wait(:task_id2, desired_status => 'running');
+SELECT citus_task_wait(:task_id3, desired_status => 'running');
+SELECT citus_task_wait(:task_id4, desired_status => 'running');
+SELECT citus_task_wait(:task_id5, desired_status => 'runnable');
 
 SELECT task_id, status FROM pg_dist_background_task
     WHERE task_id IN (:task_id1, :task_id2, :task_id3, :task_id4, :task_id5)
@@ -160,7 +169,8 @@ SELECT task_id, status FROM pg_dist_background_task
 SELECT pid AS monitor_pid FROM pg_stat_activity WHERE application_name ~ 'task queue monitor' \gset
 SELECT pg_terminate_backend(:monitor_pid); -- terminate monitor process
 
-SELECT pg_sleep(2); -- wait enough to show that tasks are terminated
+SELECT citus_task_wait(:task_id1, desired_status => 'runnable'); -- shows that we hit the failure because we set task status as runnable to retry it
+SELECT citus_task_wait(:task_id2, desired_status => 'runnable'); -- shows that we hit the failure because we set task status as runnable to retry it
 
 SELECT task_id, status FROM pg_dist_background_task
     WHERE task_id IN (:task_id1, :task_id2)

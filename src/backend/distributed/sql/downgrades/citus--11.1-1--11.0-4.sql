@@ -114,6 +114,7 @@ DROP FUNCTION pg_catalog.citus_rebalance_stop();
 DROP FUNCTION pg_catalog.citus_rebalance_wait();
 DROP FUNCTION pg_catalog.citus_job_cancel(bigint);
 DROP FUNCTION pg_catalog.citus_job_wait(bigint, pg_catalog.citus_job_status);
+DROP FUNCTION pg_catalog.citus_task_wait(bigint, pg_catalog.citus_task_status);
 DROP TABLE pg_catalog.pg_dist_background_task_depend;
 DROP TABLE pg_catalog.pg_dist_background_task;
 DROP TYPE pg_catalog.citus_task_status;

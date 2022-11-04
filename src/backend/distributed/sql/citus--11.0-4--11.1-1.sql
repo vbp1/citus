@@ -178,6 +178,7 @@ CREATE INDEX pg_dist_background_task_depend_depends_on ON pg_catalog.pg_dist_bac
 GRANT SELECT ON pg_catalog.pg_dist_background_task_depend TO PUBLIC;
 
 #include "udfs/citus_job_wait/11.1-1.sql"
+#include "udfs/citus_task_wait/11.1-1.sql"
 #include "udfs/citus_job_cancel/11.1-1.sql"
 #include "udfs/citus_rebalance_start/11.1-1.sql"
 #include "udfs/citus_rebalance_stop/11.1-1.sql"

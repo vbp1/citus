@@ -106,8 +106,8 @@ SELECT citus_job_wait(:job_id, desired_status => 'running');
 
 (1 row)
 
-SELECT pg_sleep(.1); -- make sure it has time to error after it started running
- pg_sleep
+SELECT citus_task_wait(:task_id, desired_status => 'runnable'); -- shows that we hit the failure because we set task status as runnable to retry it
+ citus_task_wait
 ---------------------------------------------------------------------
 
 (1 row)
@@ -216,8 +216,32 @@ INSERT INTO pg_dist_background_job (job_type, description) VALUES ('test_job', '
 INSERT INTO pg_dist_background_task (job_id, command) VALUES (:job_id2, $job$ SELECT pg_sleep(5); $job$) RETURNING task_id AS task_id4 \gset
 INSERT INTO pg_dist_background_job (job_type, description) VALUES ('test_job', 'simple test to verify max parallel background execution') RETURNING job_id AS job_id3 \gset
 INSERT INTO pg_dist_background_task (job_id, command) VALUES (:job_id3, $job$ SELECT pg_sleep(5); $job$) RETURNING task_id AS task_id5 \gset
-SELECT pg_sleep(2); -- we assume this is enough time for all tasks to be in running status except the last one due to parallel worker limit
- pg_sleep
+SELECT citus_task_wait(:task_id1, desired_status => 'running');
+ citus_task_wait
+---------------------------------------------------------------------
+
+(1 row)
+
+SELECT citus_task_wait(:task_id2, desired_status => 'running');
+ citus_task_wait
+---------------------------------------------------------------------
+
+(1 row)
+
+SELECT citus_task_wait(:task_id3, desired_status => 'running');
+ citus_task_wait
+---------------------------------------------------------------------
+
+(1 row)
+
+SELECT citus_task_wait(:task_id4, desired_status => 'running');
+ citus_task_wait
+---------------------------------------------------------------------
+
+(1 row)
+
+SELECT citus_task_wait(:task_id5, desired_status => 'runnable');
+ citus_task_wait
 ---------------------------------------------------------------------
 
 (1 row)
@@ -279,8 +303,32 @@ INSERT INTO pg_dist_background_job (job_type, description) VALUES ('test_job', '
 INSERT INTO pg_dist_background_task (job_id, command) VALUES (:job_id2, $job$ SELECT pg_sleep(5); $job$) RETURNING task_id AS task_id4 \gset
 INSERT INTO pg_dist_background_job (job_type, description) VALUES ('test_job', 'simple test to verify max parallel background execution') RETURNING job_id AS job_id3 \gset
 INSERT INTO pg_dist_background_task (job_id, command) VALUES (:job_id3, $job$ SELECT pg_sleep(5); $job$) RETURNING task_id AS task_id5 \gset
-SELECT pg_sleep(2); -- we assume this is enough time for all tasks to be in running status except the last one due to parallel worker limit
- pg_sleep
+SELECT citus_task_wait(:task_id1, desired_status => 'running');
+ citus_task_wait
+---------------------------------------------------------------------
+
+(1 row)
+
+SELECT citus_task_wait(:task_id2, desired_status => 'running');
+ citus_task_wait
+---------------------------------------------------------------------
+
+(1 row)
+
+SELECT citus_task_wait(:task_id3, desired_status => 'running');
+ citus_task_wait
+---------------------------------------------------------------------
+
+(1 row)
+
+SELECT citus_task_wait(:task_id4, desired_status => 'running');
+ citus_task_wait
+---------------------------------------------------------------------
+
+(1 row)
+
+SELECT citus_task_wait(:task_id5, desired_status => 'runnable');
+ citus_task_wait
 ---------------------------------------------------------------------
 
 (1 row)
@@ -373,8 +421,14 @@ SELECT pg_terminate_backend(:monitor_pid); -- terminate monitor process
  t
 (1 row)
 
-SELECT pg_sleep(2); -- wait enough to show that tasks are terminated
- pg_sleep
+SELECT citus_task_wait(:task_id1, desired_status => 'runnable'); -- shows that we hit the failure because we set task status as runnable to retry it
+ citus_task_wait
+---------------------------------------------------------------------
+
+(1 row)
+
+SELECT citus_task_wait(:task_id2, desired_status => 'runnable'); -- shows that we hit the failure because we set task status as runnable to retry it
+ citus_task_wait
 ---------------------------------------------------------------------
 
 (1 row)
